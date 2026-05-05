@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A320 TOD Calculator — MSFS SimConnect</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:#050a0f; --panel:#090f16; --border:#0d2235;
+    --accent:#00c8ff; --accent2:#ff6b35; --accent3:#39ff14;
+    --warn:#ffcc00; --danger:#ff2244; --text:#c8dfe8; --muted:#3a5568;
+    --glow:0 0 12px rgba(0,200,255,0.4);
+    --glow2:0 0 12px rgba(57,255,20,0.4);
+    --glow3:0 0 12px rgba(255,107,53,0.4);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:'Exo 2',sans-serif;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:24px 16px 40px;
+    background-image:
+      radial-gradient(ellipse at 20% 10%, rgba(0,80,140,0.18) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 90%, rgba(0,50,100,0.12) 0%, transparent 55%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,200,255,0.03) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,200,255,0.03) 40px);
+  }
+
+  /* ── HEADER ── */
+  header {
+    width:100%; max-width:1000px;
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:22px; padding-bottom:14px; border-bottom:1px solid var(--border);
+  }
+  .logo { font-family:'Orbitron',monospace; font-weight:900; font-size:1.4rem; color:var(--accent); text-shadow:var(--glow); letter-spacing:.08em; }
+  .logo span { color:var(--accent2); }
+  .logo sub  { font-size:.42rem; color:var(--muted); letter-spacing:.2em; vertical-align:middle; margin-left:8px; }
+  .status-bar { display:flex; align-items:center; gap:8px; font-family:'Share Tech Mono',monospace; font-size:.68rem; color:var(--muted); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
+  .dot.live { background:var(--accent3); box-shadow:var(--glow2); animation:pulse 1.5s infinite; }
+  .dot.demo { background:var(--warn); box-shadow:0 0 8px rgba(255,204,0,.5); animation:pulse 2s infinite; }
+  .dot.err  { background:var(--danger); animation:pulse .8s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ── GRID ── */
+  .grid { width:100%; max-width:1000px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:13px; }
+  @media(max-width:700px)  { .grid { grid-template-columns:1fr; } }
+  @media(max-width:960px) and (min-width:700px) { .grid { grid-template-columns:1fr 1fr; } }
+  .col2 { grid-column:span 2; }
+
+  /* ── PANEL ── */
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:17px; position:relative; overflow:hidden; }
+  .panel::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,var(--accent),transparent); opacity:.5; }
+  .panel.green::before  { background:linear-gradient(90deg,transparent,var(--accent3),transparent); }
+  .panel.orange::before { background:linear-gradient(90deg,transparent,var(--accent2),transparent); }
+  .ptitle { font-family:'Orbitron',monospace; font-size:.57rem; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; margin-bottom:13px; opacity:.8; }
+  .panel.green  .ptitle { color:var(--accent3); }
+  .panel.orange .ptitle { color:var(--accent2); }
+
+  /* ── FIELDS ── */
+  .readout { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+  .field   { display:flex; flex-direction:column; gap:3px; }
+  .flabel  { font-family:'Share Tech Mono',monospace; font-size:.57rem; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; }
+  .fval    { font-family:'Share Tech Mono',monospace; font-size:1.2rem; color:var(--accent); text-shadow:var(--glow); transition:color .3s; }
+  .funit   { font-size:.52rem; color:var(--muted); margin-left:3px; letter-spacing:.1em; }
+  .fval.green  { color:var(--accent3); text-shadow:var(--glow2); }
+  .fval.orange { color:var(--accent2); text-shadow:var(--glow3); }
+  .fval.warn   { color:var(--warn);   text-shadow:0 0 10px rgba(255,204,0,.4); }
+  .fval.danger { color:var(--danger); text-shadow:0 0 10px rgba(255,34,68,.5); animation:pulse .8s infinite; }
+
+  /* ── INPUTS ── */
+  .igroup { display:flex; flex-direction:column; gap:6px; margin-bottom:13px; }
+  .ilabel { font-family:'Orbitron',monospace; font-size:.57rem; letter-spacing:.14em; color:var(--accent2); text-transform:uppercase; }
+  .irow   { display:flex; gap:8px; align-items:center; }
+  .alt-input {
+    flex:1; background:#0a1520; border:1px solid #1a3548; border-radius:4px;
+    padding:9px 12px; font-family:'Share Tech Mono',monospace; font-size:1.3rem;
+    color:var(--accent2); outline:none; text-align:right; letter-spacing:.06em;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  .alt-input:focus { border-color:var(--accent2); box-shadow:0 0 14px rgba(255,107,53,.2); }
+  .iunit { font-family:'Orbitron',monospace; font-size:.68rem; color:var(--muted); letter-spacing:.1em; }
+
+  /* ── TOGGLE BUTTON ROWS ── */
+  .btn-row-sm { display:flex; gap:6px; margin-bottom:11px; flex-wrap:wrap; }
+  .tbtn {
+    flex:1; background:transparent; border:1px solid var(--muted); border-radius:4px;
+    color:var(--muted); font-family:'Share Tech Mono',monospace; font-size:.68rem;
+    padding:6px 4px; cursor:pointer; transition:all .2s; letter-spacing:.04em; min-width:50px;
+  }
+  .tbtn:hover, .tbtn.active { border-color:var(--accent2); color:var(--accent2); background:rgba(255,107,53,.07); }
+  .tbtn.var:hover, .tbtn.var.active { border-color:var(--accent); color:var(--accent); background:rgba(0,200,255,.07); }
+
+  /* ── TOD RESULT ── */
+  .tod-result {
+    display:flex; align-items:flex-end; gap:14px;
+    padding:13px; background:rgba(0,200,255,.04);
+    border:1px solid rgba(0,200,255,.12); border-radius:6px; margin-bottom:11px;
+  }
+  .tod-nm { font-family:'Orbitron',monospace; font-size:2.7rem; font-weight:900; color:var(--accent); text-shadow:var(--glow); line-height:1; }
+  .tod-nm.warn   { color:var(--warn);   text-shadow:0 0 16px rgba(255,204,0,.5); }
+  .tod-nm.danger { color:var(--danger); text-shadow:0 0 16px rgba(255,34,68,.5); animation:pulse .8s infinite; }
+  .tod-meta { display:flex; flex-direction:column; gap:3px; font-family:'Share Tech Mono',monospace; font-size:.66rem; color:var(--muted); }
+  .tod-eta  { font-size:.8rem; color:var(--accent); margin-top:4px; }
+
+  /* ── ALERTS ── */
+  .alert { padding:9px 12px; border-radius:4px; font-family:'Share Tech Mono',monospace; font-size:.68rem; border-left:3px solid; margin-bottom:11px; animation:fadeIn .3s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  .alert.info   { background:rgba(0,200,255,.06);  border-color:var(--accent);  color:var(--accent); }
+  .alert.warn   { background:rgba(255,204,0,.06);  border-color:var(--warn);    color:var(--warn); }
+  .alert.danger { background:rgba(255,34,68,.06);  border-color:var(--danger);  color:var(--danger); }
+  .alert.green  { background:rgba(57,255,20,.06);  border-color:var(--accent3); color:var(--accent3); }
+
+  /* ── DESCENT BUTTON ── */
+  .btn-descend {
+    width:100%; padding:15px;
+    font-family:'Orbitron',monospace; font-size:.75rem; font-weight:700;
+    letter-spacing:.22em; text-transform:uppercase; border-radius:5px; cursor:pointer;
+    border:2px solid var(--danger); background:rgba(255,34,68,.08); color:var(--danger);
+    transition:all .25s; position:relative; overflow:hidden; margin-bottom:10px;
+  }
+  .btn-descend::before {
+    content:''; position:absolute; top:0; left:-100%; width:100%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,34,68,.15),transparent);
+    transition:left .4s;
+  }
+  .btn-descend:hover::before { left:100%; }
+  .btn-descend:hover { background:rgba(255,34,68,.2); box-shadow:0 0 28px rgba(255,34,68,.4); }
+  .btn-descend:disabled { opacity:.35; cursor:not-allowed; border-color:var(--muted); color:var(--muted); }
+  .btn-descend:disabled::before { display:none; }
+  .btn-descend.confirmed {
+    border-color:var(--accent3); color:var(--accent3);
+    background:rgba(57,255,20,.08); box-shadow:0 0 22px rgba(57,255,20,.25);
+    cursor:default;
+  }
+  .btn-descend.confirmed::before { display:none; }
+
+  /* ── SECONDARY BUTTONS ── */
+  .sec-row { display:flex; gap:7px; margin-bottom:10px; }
+  .btn { font-family:'Orbitron',monospace; font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; padding:8px 13px; border-radius:4px; cursor:pointer; border:none; transition:all .2s; }
+  .btn-cyan   { background:rgba(0,200,255,.08); border:1px solid var(--accent);  color:var(--accent); }
+  .btn-cyan:hover   { background:rgba(0,200,255,.18); box-shadow:var(--glow); }
+  .btn-orange { background:rgba(255,107,53,.08); border:1px solid var(--accent2); color:var(--accent2); }
+  .btn-orange:hover { background:rgba(255,107,53,.18); box-shadow:var(--glow3); }
+  .btn-orange.active { background:rgba(57,255,20,.08); border-color:var(--accent3); color:var(--accent3); }
+
+  /* ── SPEED CARDS ── */
+  .speed-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .sc { background:#060d14; border:1px solid var(--border); border-radius:5px; padding:9px 11px; }
+  .sc .slabel { font-family:'Share Tech Mono',monospace; font-size:.57rem; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-bottom:3px; }
+  .sc .sval   { font-family:'Orbitron',monospace; font-size:1.15rem; font-weight:700; color:var(--accent3); text-shadow:var(--glow2); }
+  .sc .sunit  { font-size:.52rem; color:var(--muted); margin-left:3px; }
+  .sc.vapp    { grid-column:1/-1; background:rgba(57,255,20,.05); border-color:rgba(57,255,20,.2); }
+  .sc.vapp .sval { font-size:1.55rem; }
+
+  /* ── GATE LIST ── */
+  .gate-list { margin-top:11px; }
+  .gate { display:flex; align-items:center; gap:9px; padding:6px 0; border-bottom:1px solid #0a1820; font-family:'Share Tech Mono',monospace; font-size:.65rem; }
+  .gate:last-child { border-bottom:none; }
+  .gate-alt { min-width:68px; color:var(--accent2); letter-spacing:.04em; }
+  .gate-arr { color:var(--muted); }
+  .gate-act { color:var(--text); }
+  .gate-spd { margin-left:auto; color:var(--accent3); font-size:.72rem; }
+
+  /* ── FUEL BAR ── */
+  .fuel-bar-wrap  { margin-top:11px; }
+  .fuel-bar-label { display:flex; justify-content:space-between; font-family:'Share Tech Mono',monospace; font-size:.6rem; color:var(--muted); margin-bottom:5px; }
+  .fuel-bar       { height:5px; background:#0d1f2d; border-radius:3px; overflow:hidden; }
+  .fuel-fill      { height:100%; border-radius:3px; transition:width .6s ease; background:linear-gradient(90deg,var(--accent3),#00ff88); }
+  .fuel-fill.low      { background:linear-gradient(90deg,var(--warn),#ffaa00); }
+  .fuel-fill.critical { background:linear-gradient(90deg,var(--danger),#ff5500); animation:pulse 1s infinite; }
+
+  /* ── WS LOG ── */
+  .ws-log {
+    background:#060c12; border:1px solid var(--border); border-radius:4px;
+    padding:9px; height:88px; overflow-y:auto;
+    font-family:'Share Tech Mono',monospace; font-size:.6rem; color:var(--muted); margin-top:9px;
+  }
+  .entry           { padding:1px 0; border-bottom:1px solid #0a1520; }
+  .entry.ok        { color:var(--accent3); }
+  .entry.warn      { color:var(--warn); }
+  .entry.err       { color:var(--danger); }
+  .entry.cmd       { color:var(--accent2); }
+
+  .divider { height:1px; background:var(--border); margin:11px 0; }
+  .ticker  { font-family:'Share Tech Mono',monospace; font-size:.56rem; color:#1a3548; position:absolute; bottom:7px; right:10px; letter-spacing:.1em; pointer-events:none; }
+
+  footer { margin-top:22px; font-family:'Share Tech Mono',monospace; font-size:.58rem; color:var(--muted); text-align:center; letter-spacing:.1em; }
+  footer a { color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TOD<span>·</span>CALC <sub>A320 // MSFS 2020·2024</sub></div>
+  <div class="status-bar">
+    <div class="dot demo" id="connDot"></div>
+    <span id="connLabel">DEMO MODE</span>
+    &nbsp;|&nbsp;
+    <span id="wsLabel">WS: DISCONNECTED</span>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ① Live Aircraft Data -->
+  <div class="panel">
+    <div class="ptitle">⬡ Live Aircraft Data</div>
+    <div class="readout">
+      <div class="field"><div class="flabel">Current Alt</div><div class="fval" id="curAlt">28,450<span class="funit">FT</span></div></div>
+      <div class="field"><div class="flabel">Ground Speed</div><div class="fval" id="gndSpd">420<span class="funit">KTS</span></div></div>
+      <div class="field"><div class="flabel">Vert Speed</div><div class="fval" id="vs">+0<span class="funit">FT/MIN</span></div></div>
+      <div class="field"><div class="flabel">True Heading</div><div class="fval" id="hdg">247<span class="funit">°</span></div></div>
+      <div class="field"><div class="flabel">Latitude</div><div class="fval" style="font-size:.9rem" id="lat">48.8566°N</div></div>
+      <div class="field"><div class="flabel">Longitude</div><div class="fval" style="font-size:.9rem" id="lon">002.3522°E</div></div>
+      <div class="field"><div class="flabel">Gross Weight</div><div class="fval orange" id="gw">63,500<span class="funit">KG</span></div></div>
+      <div class="field"><div class="flabel">OAT</div><div class="fval" id="oat">−42<span class="funit">°C</span></div></div>
+    </div>
+    <div class="ticker">SIMVAR·LIVE</div>
+  </div>
+
+  <!-- ② Fuel Status -->
+  <div class="panel green">
+    <div class="ptitle">⬡ Fuel Status</div>
+    <div class="readout">
+      <div class="field"><div class="flabel">Total Fuel</div><div class="fval green" id="fuelQty">3,840<span class="funit">GAL</span></div></div>
+      <div class="field"><div class="flabel">Fuel %</div><div class="fval green" id="fuelPct">74<span class="funit">%</span></div></div>
+      <div class="field"><div class="flabel">Fuel Flow</div><div class="fval green" id="fuelFlow">880<span class="funit">GPH</span></div></div>
+      <div class="field"><div class="flabel">Endurance</div><div class="fval green" id="endurance">4:21<span class="funit">HRS</span></div></div>
+    </div>
+    <div class="fuel-bar-wrap">
+      <div class="fuel-bar-label"><span>FUEL LEVEL</span><span id="fuelBarPct">74%</span></div>
+      <div class="fuel-bar"><div class="fuel-fill" id="fuelFill" style="width:74%"></div></div>
+    </div>
+    <div class="ticker">FUEL_SYS</div>
+  </div>
+
+  <!-- ③ A320 Speed Schedule -->
+  <div class="panel green">
+    <div class="ptitle">⬡ A320 Speed Schedule</div>
+    <div class="speed-grid">
+      <div class="sc"><div class="slabel">Flap 1 (S-Spd)</div><div class="sval" id="spF1">189<span class="sunit">KTS</span></div></div>
+      <div class="sc"><div class="slabel">Flap 2</div><div class="sval" id="spF2">174<span class="sunit">KTS</span></div></div>
+      <div class="sc"><div class="slabel">Flap 3</div><div class="sval" id="spF3">159<span class="sunit">KTS</span></div></div>
+      <div class="sc"><div class="slabel">Vref (FULL)</div><div class="sval" id="spVref">141<span class="sunit">KTS</span></div></div>
+      <div class="sc vapp"><div class="slabel">🎯 Vapp — Target Touchdown Speed</div><div class="sval" id="spVapp">146<span class="sunit">KTS</span></div></div>
+    </div>
+    <div class="gate-list">
+      <div class="gate"><div class="gate-alt">FL100</div><div class="gate-arr">→</div><div class="gate-act">FLAP 1 · &lt;250 kts</div><div class="gate-spd" id="g1">189</div></div>
+      <div class="gate"><div class="gate-alt">4,000 FT</div><div class="gate-arr">→</div><div class="gate-act">FLAP 2</div><div class="gate-spd" id="g2">174</div></div>
+      <div class="gate"><div class="gate-alt">3,000 FT</div><div class="gate-arr">→</div><div class="gate-act">FLAP 3 · GEAR DOWN</div><div class="gate-spd" id="g3">159</div></div>
+      <div class="gate"><div class="gate-alt">2,000 FT</div><div class="gate-arr">→</div><div class="gate-act">FULL · Establish Vapp</div><div class="gate-spd" id="g4">146</div></div>
+    </div>
+    <div class="ticker">FCOM·REV·46</div>
+  </div>
+
+  <!-- ④ TOD Calculator + Descent Control -->
+  <div class="panel col2 orange">
+    <div class="ptitle">⬡ TOD Calculator &amp; Descent Control</div>
+
+    <!-- A320 Variant -->
+    <div style="font-family:'Share Tech Mono',monospace;font-size:.58rem;color:var(--muted);margin-bottom:5px;letter-spacing:.1em">A320 VARIANT</div>
+    <div class="btn-row-sm" style="margin-bottom:13px">
+      <button class="tbtn var active" onclick="setVariant('default',this)">Default MSFS</button>
+      <button class="tbtn var"        onclick="setVariant('fbw',this)">FlyByWire</button>
+      <button class="tbtn var"        onclick="setVariant('fenix',this)">Fenix</button>
+    </div>
+
+    <!-- Target Altitude -->
+    <div class="igroup">
+      <div class="ilabel">Target Altitude (ft MSL)</div>
+      <div class="irow">
+        <input class="alt-input" type="number" id="targetAlt" value="10000" min="0" max="45000" step="100"/>
+        <div class="iunit">FT MSL</div>
+      </div>
+    </div>
+
+    <!-- Descent Gradient -->
+    <div style="font-family:'Share Tech Mono',monospace;font-size:.58rem;color:var(--muted);margin-bottom:5px;letter-spacing:.1em">DESCENT GRADIENT</div>
+    <div class="btn-row-sm">
+      <button class="tbtn"        onclick="setGrad(2.5,this)">2.5°</button>
+      <button class="tbtn active" onclick="setGrad(3.0,this)">3.0° ★</button>
+      <button class="tbtn"        onclick="setGrad(3.5,this)">3.5°</button>
+      <button class="tbtn"        onclick="setGrad(4.0,this)">4.0°</button>
+      <button class="tbtn"        onclick="setGrad(5.0,this)">5.0°</button>
+    </div>
+
+    <!-- Descent Rate -->
+    <div style="font-family:'Share Tech Mono',monospace;font-size:.58rem;color:var(--muted);margin-bottom:5px;letter-spacing:.1em">DESCENT RATE (FT/MIN)</div>
+    <div class="btn-row-sm">
+      <button class="tbtn"        onclick="setVS(-1200,this)">−1200</button>
+      <button class="tbtn active" onclick="setVS(-1800,this)">−1800 ★</button>
+      <button class="tbtn"        onclick="setVS(-2200,this)">−2200</button>
+      <button class="tbtn"        onclick="setVS(-2800,this)">−2800</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- TOD Result -->
+    <div class="tod-result">
+      <div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:.57rem;color:var(--muted);letter-spacing:.12em;margin-bottom:4px">TOD DISTANCE</div>
+        <div class="tod-nm" id="todNm">61</div>
+      </div>
+      <div class="tod-meta">
+        <div>NM BEFORE DESTINATION</div>
+        <div style="margin-top:3px">Alt Δ: <span id="altDelta" style="color:var(--accent)">18,450 FT</span></div>
+        <div>Gradient: <span id="gradDisp" style="color:var(--accent)">3.0°</span> &nbsp;·&nbsp; VS: <span id="vsDisp" style="color:var(--accent)">−1800 fpm</span></div>
+        <div class="tod-eta">ETA to TOD: <span id="todEta">8 MIN 44 SEC</span></div>
+      </div>
+    </div>
+
+    <!-- Status Alert -->
+    <div id="todAlert" class="alert info">ℹ Cruise phase — maintain altitude. Descent not yet required.</div>
+
+    <!-- ★ DESCENT BUTTON ★ -->
+    <button class="btn-descend" id="descentBtn" onclick="initiateDescend()">
+      ▼ &nbsp; INITIATE DESCENT &nbsp; ▼
+    </button>
+
+    <!-- Descent confirmed message -->
+    <div id="descentStatus" class="alert green" style="display:none">
+      ✓ DESCENT INITIATED — AP altitude set · VS engaged · Speed managed
+    </div>
+
+    <!-- Controls row -->
+    <div class="sec-row">
+      <button class="btn btn-cyan"   onclick="calcTOD()">RECALCULATE</button>
+      <button class="btn btn-orange" id="simBtn" onclick="toggleSim()">▶ START DEMO</button>
+      <button class="btn btn-cyan"   onclick="connectWS()">⟳ CONNECT WS</button>
+    </div>
+
+    <!-- Live event log -->
+    <div class="ws-log" id="wsLog">
+      <div class="entry warn">[BOOT] Demo mode — run server.py then click CONNECT WS for live data</div>
+    </div>
+
+    <div class="ticker">SIMCONNECT · WS:8765</div>
+  </div>
+
+</div><!-- /grid -->
+
+<footer>
+  A320 TOD CALCULATOR &nbsp;·&nbsp; SIMCONNECT BRIDGE &nbsp;·&nbsp;
+  <a href="https://docs.flightsimulator.com" target="_blank">SDK DOCS</a>
+  &nbsp;·&nbsp; DEFAULT · FBW · FENIX &nbsp;·&nbsp; ©2026
+</footer>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────────────
+let gradient   = 3.0;
+let targetVS   = -1800;
+let variant    = 'default';
+let simRunning = false;
+let simInt     = null;
+let ws         = null;
+let descended  = false;
+
+let ac = {
+  alt:28450, spd:420, vs:0, hdg:247,
+  lat:48.8566, lon:2.3522,
+  fuelQty:3840, fuelMax:5200, fuelFlow:880,
+  gw_kg:63500, oat:-42
+};
+
+// ── A320 SPEED INTERPOLATION ──────────────────────────────────────────
+function getSpeeds(gw) {
+  const W  = [55000,60000,65000,70000,75000];
+  const VR = [133,  138,  143,  148,  152 ];
+  const F1 = [178,  185,  192,  199,  205 ];
+  const F2 = [164,  170,  176,  182,  188 ];
+  const F3 = [150,  155,  161,  167,  172 ];
+  gw = Math.max(55000, Math.min(75000, gw));
+  function ip(t) {
+    for (let i = 0; i < W.length - 1; i++) {
+      if (gw >= W[i] && gw <= W[i+1]) {
+        const r = (gw - W[i]) / (W[i+1] - W[i]);
+        return Math.round(t[i] + r * (t[i+1] - t[i]));
+      }
+    }
+    return t[t.length-1];
+  }
+  const vref = ip(VR);
+  return { f1:ip(F1), f2:ip(F2), f3:ip(F3), vref, vapp:vref+5 };
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────
+const fmt = (n, d=0) => n.toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+
+function log(msg, type='ok') {
+  const box = document.getElementById('wsLog');
+  const t   = new Date().toTimeString().slice(0,8);
+  const el  = document.createElement('div');
+  el.className = 'entry ' + type;
+  el.textContent = `[${t}] ${msg}`;
+  box.prepend(el);
+  while (box.children.length > 60) box.removeChild(box.lastChild);
+}
+
+// ── UI CONTROLS ───────────────────────────────────────────────────────
+function setVariant(v, el) {
+  variant = v;
+  document.querySelectorAll('.tbtn.var').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  log(`Variant → ${v.toUpperCase()}`, 'warn');
+}
+
+function setGrad(g, el) {
+  gradient = g;
+  el.parentElement.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  calcTOD();
+}
+
+function setVS(v, el) {
+  targetVS = v;
+  el.parentElement.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('vsDisp').textContent = v + ' fpm';
+}
+
+// ── TOD CALCULATION ───────────────────────────────────────────────────
+function calcTOD() {
+  const tgt    = parseFloat(document.getElementById('targetAlt').value) || 0;
+  const dAlt   = Math.max(0, ac.alt - tgt);
+  const todNm  = dAlt / (Math.tan(gradient * Math.PI / 180) * 6076.115);
+  const etaMin = ac.spd > 0 ? (todNm / ac.spd) * 60 : 0;
+
+  const todEl  = document.getElementById('todNm');
+  const alrtEl = document.getElementById('todAlert');
+  const btn    = document.getElementById('descentBtn');
+
+  todEl.textContent = fmt(todNm, 0);
+  document.getElementById('altDelta').textContent = fmt(dAlt) + ' FT';
+  document.getElementById('gradDisp').textContent = gradient.toFixed(1) + '°';
+
+  const eM = Math.floor(etaMin);
+  const eS = Math.round((etaMin - eM) * 60);
+  document.getElementById('todEta').textContent = eM + ' MIN ' + String(eS).padStart(2,'0') + ' SEC';
+
+  todEl.className = 'tod-nm';
+  btn.disabled = false;
+
+  if (dAlt <= 0) {
+    alrtEl.className = 'alert green';
+    alrtEl.textContent = '✓ At or below target altitude — no descent needed.';
+    btn.disabled = true;
+  } else if (etaMin <= 0) {
+    todEl.classList.add('danger');
+    alrtEl.className = 'alert danger';
+    alrtEl.textContent = '⚠ PAST TOD — Begin descent IMMEDIATELY';
+  } else if (etaMin < 2) {
+    todEl.classList.add('danger');
+    alrtEl.className = 'alert danger';
+    alrtEl.textContent = `⚠ TOD IN ${eM} MIN ${String(eS).padStart(2,'0')} SEC — PREPARE NOW`;
+  } else if (etaMin < 5) {
+    todEl.classList.add('warn');
+    alrtEl.className = 'alert warn';
+    alrtEl.textContent = `⚠ APPROACHING TOD in ${eM} MIN ${String(eS).padStart(2,'0')} SEC — prepare for descent`;
+  } else {
+    alrtEl.className = 'alert info';
+    alrtEl.textContent = `ℹ Begin descent in approximately ${eM} MIN ${String(eS).padStart(2,'0')} SEC. Maintain current altitude.`;
+    // Reset descent button for next segment when well away from TOD
+    if (etaMin > 8 && descended) {
+      descended = false;
+      btn.className = 'btn-descend';
+      btn.textContent = '▼  INITIATE DESCENT  ▼';
+      document.getElementById('descentStatus').style.display = 'none';
+    }
+  }
+
+  updateSpeeds();
+}
+
+// ── SPEED DISPLAY ─────────────────────────────────────────────────────
+function updateSpeeds() {
+  const sp = getSpeeds(ac.gw_kg);
+  document.getElementById('spF1').innerHTML   = sp.f1   + '<span class="sunit">KTS</span>';
+  document.getElementById('spF2').innerHTML   = sp.f2   + '<span class="sunit">KTS</span>';
+  document.getElementById('spF3').innerHTML   = sp.f3   + '<span class="sunit">KTS</span>';
+  document.getElementById('spVref').innerHTML = sp.vref + '<span class="sunit">KTS</span>';
+  document.getElementById('spVapp').innerHTML = sp.vapp + '<span class="sunit">KTS</span>';
+  document.getElementById('g1').textContent = sp.f1;
+  document.getElementById('g2').textContent = sp.f2;
+  document.getElementById('g3').textContent = sp.f3;
+  document.getElementById('g4').textContent = sp.vapp;
+}
+
+// ── INITIATE DESCENT ─────────────────────────────────────────────────
+function initiateDescend() {
+  if (descended) return;
+
+  const tgt = parseInt(document.getElementById('targetAlt').value);
+  const sp  = getSpeeds(ac.gw_kg);
+
+  const payload = {
+    command:    'DESCEND',
+    target_alt: tgt,
+    vs:         targetVS,
+    spd:        sp.f1,
+    variant:    variant,
+    gw_kg:      ac.gw_kg
+  };
+
+  log(`DESCENT CMD → ALT:${tgt}ft  VS:${targetVS}fpm  SPD:${sp.f1}kts  [${variant.toUpperCase()}]`, 'cmd');
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+    log('Command sent to server.py via WebSocket', 'ok');
+  } else {
+    log('⚠ WebSocket not connected — command NOT sent to sim', 'err');
+  }
+
+  descended = true;
+  const btn = document.getElementById('descentBtn');
+  btn.className = 'btn-descend confirmed';
+  btn.textContent = '✓  DESCENT INITIATED';
+  document.getElementById('descentStatus').style.display = 'block';
+}
+
+// ── UPDATE ALL UI ─────────────────────────────────────────────────────
+function updateUI() {
+  document.getElementById('curAlt').innerHTML = fmt(ac.alt) + '<span class="funit">FT</span>';
+  document.getElementById('gndSpd').innerHTML = fmt(ac.spd) + '<span class="funit">KTS</span>';
+
+  const vsEl = document.getElementById('vs');
+  vsEl.innerHTML  = (ac.vs >= 0 ? '+' : '') + fmt(ac.vs) + '<span class="funit">FT/MIN</span>';
+  vsEl.className  = 'fval' + (ac.vs < -200 ? ' orange' : '');
+
+  document.getElementById('hdg').innerHTML = fmt(ac.hdg) + '<span class="funit">°</span>';
+  document.getElementById('lat').textContent = Math.abs(ac.lat).toFixed(4) + '°' + (ac.lat >= 0 ? 'N' : 'S');
+  document.getElementById('lon').textContent = Math.abs(ac.lon).toFixed(4) + '°' + (ac.lon >= 0 ? 'E' : 'W');
+  document.getElementById('gw').innerHTML  = fmt(ac.gw_kg) + '<span class="funit">KG</span>';
+  document.getElementById('oat').innerHTML = ac.oat + '<span class="funit">°C</span>';
+
+  // Fuel
+  const pct = Math.round((ac.fuelQty / ac.fuelMax) * 100);
+  const eh  = ac.fuelFlow > 0 ? Math.floor(ac.fuelQty / ac.fuelFlow) : 0;
+  const em  = ac.fuelFlow > 0 ? Math.round(((ac.fuelQty / ac.fuelFlow) - eh) * 60) : 0;
+
+  document.getElementById('fuelQty').innerHTML   = fmt(ac.fuelQty) + '<span class="funit">GAL</span>';
+  document.getElementById('fuelPct').innerHTML   = pct + '<span class="funit">%</span>';
+  document.getElementById('fuelFlow').innerHTML  = fmt(ac.fuelFlow) + '<span class="funit">GPH</span>';
+  document.getElementById('endurance').innerHTML = eh + ':' + String(em).padStart(2,'0') + '<span class="funit">HRS</span>';
+
+  const fill = document.getElementById('fuelFill');
+  fill.style.width = pct + '%';
+  fill.className   = 'fuel-fill' + (pct < 15 ? ' critical' : pct < 30 ? ' low' : '');
+  document.getElementById('fuelBarPct').textContent = pct + '%';
+
+  calcTOD();
+}
+
+// ── DEMO SIMULATION ───────────────────────────────────────────────────
+function toggleSim() {
+  simRunning = !simRunning;
+  const btn = document.getElementById('simBtn');
+  if (simRunning) {
+    btn.textContent = '■ STOP DEMO';
+    btn.classList.add('active');
+    document.getElementById('connDot').className   = 'dot live';
+    document.getElementById('connLabel').textContent = 'DEMO ACTIVE';
+    log('Demo simulation started', 'ok');
+    simInt = setInterval(() => {
+      ac.fuelQty = Math.max(0, ac.fuelQty - ac.fuelFlow / 3600);
+      ac.lon    += 0.0003;
+      ac.lat    -= 0.0001;
+      ac.spd     = 420 + Math.sin(Date.now() / 8000) * 8;
+      ac.hdg     = 247 + Math.sin(Date.now() / 15000) * 3;
+      updateUI();
+    }, 1000);
+  } else {
+    clearInterval(simInt);
+    btn.textContent = '▶ START DEMO';
+    btn.classList.remove('active');
+    document.getElementById('connDot').className   = 'dot demo';
+    document.getElementById('connLabel').textContent = 'DEMO MODE';
+    log('Demo stopped', 'warn');
+  }
+}
+
+// ── WEBSOCKET ─────────────────────────────────────────────────────────
+function connectWS() {
+  if (ws) { ws.close(); ws = null; }
+  log('Connecting to ws://localhost:8765', 'warn');
+  try {
+    ws = new WebSocket('ws://localhost:8765');
+
+    ws.onopen = () => {
+      document.getElementById('connDot').className     = 'dot live';
+      document.getElementById('connLabel').textContent = 'SIMCONNECT LIVE';
+      document.getElementById('wsLabel').textContent   = 'WS: CONNECTED';
+      log('Connected — receiving live SimConnect data', 'ok');
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+
+        if (d.status === 'DESCEND_CONFIRMED') {
+          log(`✓ SimConnect ACK: ALT=${d.target_alt}ft  VS=${d.vs}fpm`, 'ok');
+          return;
+        }
+
+        // Live aircraft data
+        Object.assign(ac, d);
+        updateUI();
+
+      } catch (err) {
+        log('Parse error: ' + err.message, 'err');
+      }
+    };
+
+    ws.onerror = () => {
+      log('WS error — is server.py running?', 'err');
+      document.getElementById('connDot').className   = 'dot err';
+      document.getElementById('wsLabel').textContent = 'WS: ERROR';
+    };
+
+    ws.onclose = () => {
+      document.getElementById('connDot').className     = 'dot demo';
+      document.getElementById('connLabel').textContent = 'DEMO MODE';
+      document.getElementById('wsLabel').textContent   = 'WS: DISCONNECTED';
+      log('WebSocket closed', 'warn');
+    };
+
+  } catch (err) {
+    log('Cannot connect: ' + err.message, 'err');
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────
+document.getElementById('targetAlt').addEventListener('input', calcTOD);
+updateUI();
+</script>
+</body>
+</html>
