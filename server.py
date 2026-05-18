@@ -1,18 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════╗
-║  A320 TOD CALCULATOR — SimConnect WebSocket Bridge               ║
-║  server.py                                                       ║
-║                                                                  ║
-║  REQUIREMENTS:                                                   ║
-║    pip install SimConnect websockets                             ║
-║                                                                  ║
-║  USAGE:                                                          ║
-║    1. Launch MSFS and load into a flight                         ║
-║    2. python server.py                                           ║
-║    3. Open tod_calculator.html in Chrome / Edge                  ║
-║    4. Click "CONNECT WS" in the UI                               ║
-╚══════════════════════════════════════════════════════════════════╝
-"""
 
 import asyncio
 import json
